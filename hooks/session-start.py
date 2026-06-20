@@ -17,6 +17,7 @@ Configure in .claude/settings.json:
 """
 
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,8 +28,11 @@ KNOWLEDGE_DIR = ROOT / "knowledge"
 DAILY_DIR = ROOT / "daily"
 INDEX_FILE = KNOWLEDGE_DIR / "index.md"
 
+VAULT_CONCEPTS_DIR = Path("C:/Users/PC/OneDrive/Joost/Obsidian/wiki/concepts")
+
 MAX_CONTEXT_CHARS = 20_000
 MAX_LOG_LINES = 30
+MAX_CONCEPTS_CHARS = 2_500
 
 
 def get_recent_log() -> str:
@@ -47,6 +51,44 @@ def get_recent_log() -> str:
     return "(no recent daily log)"
 
 
+def get_vault_concepts() -> str:
+    """Read concept files from vault and return a compact domain/category list."""
+    if not VAULT_CONCEPTS_DIR.exists():
+        return ""
+
+    concepts = []
+    for f in VAULT_CONCEPTS_DIR.glob("*.md"):
+        if f.name == "index.md":
+            continue
+        try:
+            content = f.read_text(encoding="utf-8")
+            fm: dict[str, str] = {}
+            match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+            if match:
+                for line in match.group(1).split("\n"):
+                    if ":" in line:
+                        k, _, v = line.partition(":")
+                        fm[k.strip()] = v.strip().strip('"')
+            concepts.append({
+                "domain":   fm.get("domain", "?"),
+                "category": fm.get("category", "?"),
+                "title":    fm.get("title", f.stem),
+            })
+        except Exception:
+            pass
+
+    if not concepts:
+        return ""
+
+    concepts.sort(key=lambda c: (c["domain"], c["category"]))
+
+    lines = [f"{c['domain']:<10}  {c['category']:<18}  {c['title']}" for c in concepts]
+    result = "## Bewezen Patronen (wiki/concepts/)\n\n" + "\n".join(lines)
+    if len(result) > MAX_CONCEPTS_CHARS:
+        result = result[:MAX_CONCEPTS_CHARS] + "\n...(meer via /wiki-query)"
+    return result
+
+
 def build_context() -> str:
     """Assemble the context to inject into the conversation."""
     parts = []
@@ -61,6 +103,11 @@ def build_context() -> str:
         parts.append(f"## Knowledge Base Index\n\n{index_content}")
     else:
         parts.append("## Knowledge Base Index\n\n(empty - no articles compiled yet)")
+
+    # Vault concepts (bewezen patronen per domein)
+    concepts = get_vault_concepts()
+    if concepts:
+        parts.append(concepts)
 
     # Recent daily log
     recent_log = get_recent_log()
