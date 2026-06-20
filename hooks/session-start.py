@@ -32,7 +32,7 @@ VAULT_CONCEPTS_DIR = Path("C:/Users/PC/OneDrive/Joost/Obsidian/wiki/concepts")
 
 MAX_CONTEXT_CHARS = 20_000
 MAX_LOG_LINES = 30
-MAX_CONCEPTS_CHARS = 2_500
+MAX_CONCEPTS_CHARS = 5_000
 
 
 def get_recent_log() -> str:
@@ -63,16 +63,25 @@ def get_vault_concepts() -> str:
         try:
             content = f.read_text(encoding="utf-8")
             fm: dict[str, str] = {}
-            match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-            if match:
-                for line in match.group(1).split("\n"):
+            fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+            if fm_match:
+                for line in fm_match.group(1).split("\n"):
                     if ":" in line:
                         k, _, v = line.partition(":")
                         fm[k.strip()] = v.strip().strip('"')
+            samenvatting = ""
+            body_match = re.search(r"\n---\n(.*)", content, re.DOTALL)
+            if body_match:
+                sam_match = re.search(r"\*\*Samenvatting\*\*[:\s]+(.+)", body_match.group(1))
+                if sam_match:
+                    samenvatting = sam_match.group(1).strip()
+                    if len(samenvatting) > 120:
+                        samenvatting = samenvatting[:117] + "..."
             concepts.append({
-                "domain":   fm.get("domain", "?"),
-                "category": fm.get("category", "?"),
-                "title":    fm.get("title", f.stem),
+                "domain":       fm.get("domain", "?"),
+                "category":     fm.get("category", "?"),
+                "title":        fm.get("title", f.stem),
+                "samenvatting": samenvatting,
             })
         except Exception:
             pass
@@ -82,7 +91,12 @@ def get_vault_concepts() -> str:
 
     concepts.sort(key=lambda c: (c["domain"], c["category"]))
 
-    lines = [f"{c['domain']:<10}  {c['category']:<18}  {c['title']}" for c in concepts]
+    lines = []
+    for c in concepts:
+        line = f"{c['domain']:<10}  {c['category']:<18}  {c['title']}"
+        if c["samenvatting"]:
+            line += f"\n  → {c['samenvatting']}"
+        lines.append(line)
     result = "## Bewezen Patronen (wiki/concepts/)\n\n" + "\n".join(lines)
     if len(result) > MAX_CONCEPTS_CHARS:
         result = result[:MAX_CONCEPTS_CHARS] + "\n...(meer via /wiki-query)"
